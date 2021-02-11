@@ -1,13 +1,15 @@
 package main
 
 import (
-	"net/http"
-	"log"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"os"
+	"log"
+	"net/http"
 	"net/url"
-	"encoding/json"
+	"os"
+	"strings"
+
 	ui "github.com/gizak/termui"
 	"github.com/gizak/termui/widgets"
 )
@@ -17,17 +19,18 @@ type EntryList struct {
 }
 
 type Entry struct {
-	Date string `json:"date"`
-	Title string `json:"title"`
+	Date    string `json:"date"`
+	Title   string `json:"title"`
 	Content string `json:"content"`
-	Id string `json:"id"`
+	Id      string `json:"id"`
 }
 
 type View string
 
 const (
-	Editor View = "editor"
-	Browser = "browser"
+	Editor    View = "editor"
+	Browser        = "browser"
+	EditTitle      = "edit_title"
 )
 
 var get_entries_endpoint = "get_entry.php"
@@ -47,25 +50,25 @@ var orig_text string
 var base_url string
 
 func min(a, b int) int {
-    if a < b {
-        return a
-    }
-    return b
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func max(a, b int) int {
-    if a > b {
-        return a
-    }
-    return b
+	if a > b {
+		return a
+	}
+	return b
 }
 
-func edit_text(input string) {
+func edit_text(input string, to_modify *string) {
 	switch input {
 	case "<Left>":
-		caret_pos = max(0, caret_pos - 1.0)
+		caret_pos = max(0, caret_pos-1.0)
 	case "<Right>":
-		caret_pos = min(len(content.Text), caret_pos + 1)
+		caret_pos = min(len(content.Text), caret_pos+1)
 	case "<Space>", "<Enter>", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", ":", ";", "<", "=", ">", "?", "@", "[", "\\", "]", "^", "_", "`", "{", "|", "}", "~":
 		if input == "<Space>" {
 			input = " "
@@ -76,28 +79,27 @@ func edit_text(input string) {
 		orig_text = orig_text[:caret_pos] + input + orig_text[caret_pos:]
 		caret_pos++
 	case "<Backspace>":
-		orig_text = orig_text[:max(0, caret_pos - 1.0)] + orig_text[caret_pos:]
+		orig_text = orig_text[:max(0, caret_pos-1.0)] + orig_text[caret_pos:]
 		caret_pos--
 	case "<Delete>":
 		if caret_pos != len(orig_text) {
-			orig_text = orig_text[:caret_pos] + orig_text[min(len(orig_text), caret_pos + 1.0):]
+			orig_text = orig_text[:caret_pos] + orig_text[min(len(orig_text), caret_pos+1.0):]
 		}
 	}
-	
-	caret_pos = max(0, min(len(orig_text) - 1, caret_pos))
-	
-	if len(orig_text) == 0 || orig_text[len(orig_text) - 1] != ' ' {
+
+	caret_pos = max(0, min(len(orig_text)-1, caret_pos))
+
+	if len(orig_text) == 0 || orig_text[len(orig_text)-1] != ' ' {
 		orig_text = orig_text + " "
 	}
 
 	highlighted_char := orig_text[caret_pos]
-	
+
 	if highlighted_char == ' ' {
 		highlighted_char = '_'
 	}
 
-	entry_list.Entries[notes.SelectedRow].Content = orig_text
-	content.Text = orig_text[:caret_pos] + "[" + string(highlighted_char) + "](fg:green,mod:bold)" + orig_text[caret_pos+1:]
+	*to_modify = orig_text[:caret_pos] + "[" + string(highlighted_char) + "](fg:green,mod:bold)" + orig_text[caret_pos+1:]
 }
 
 func show_error(err string) {
@@ -149,11 +151,11 @@ func modify_entry(entry Entry) {
 
 func update_notes_list(new_entries EntryList) {
 	notes_list := make([]string, len(new_entries.Entries))
-	
+
 	for i := 0; i < len(new_entries.Entries); i++ {
 		notes_list[i] = new_entries.Entries[i].Title
-	}	
-	
+	}
+
 	notes.Rows = notes_list
 }
 
@@ -181,7 +183,7 @@ func main() {
 	grid.SetRect(0, 0, termWidth, termHeight)
 
 	grid.Set(
-		ui.NewRow(1.0/10, 
+		ui.NewRow(1.0/10,
 			header,
 		),
 		ui.NewRow(9.0/10,
@@ -204,28 +206,42 @@ func main() {
 			notes.SelectedRowStyle = ui.NewStyle(ui.ColorYellow)
 			modify_entry(entry_list.Entries[notes.SelectedRow])
 		case "<Enter>":
-			if view == Browser {
+			if view == Browser || view == EditTitle {
 				caret_pos = 0
-				view = Editor
 				content.TextStyle = ui.NewStyle(ui.ColorYellow)
 				notes.SelectedRowStyle = ui.NewStyle(ui.ColorGreen)
-				orig_text = content.Text
-			} else {
-				edit_text(e.ID)
+
+				if view == EditTitle {
+					if len(strings.TrimSpace(entry_list.Entries[notes.SelectedRow].Title)) == 0 {
+						entry_list.Entries[notes.SelectedRow].Title = "New Entry"
+					}
+
+					update_notes_list(entry_list)
+					modify_entry(entry_list.Entries[notes.SelectedRow])
+					orig_text = entry_list.Entries[notes.SelectedRow].Content
+					content.Text = orig_text
+				} else {
+					orig_text = content.Text
+				}
+
+				view = Editor
+			} else if view == Editor {
+				edit_text(e.ID, &content.Text)
 			}
+
 		case "<Up>":
 			if view == Browser {
 				notes.ScrollUp()
 				content.Text = entry_list.Entries[notes.SelectedRow].Content
 			} else if view == Editor {
-				edit_text(e.ID)
+				edit_text(e.ID, &content.Text)
 			}
 		case "<Down>":
 			if view == Browser {
 				notes.ScrollDown()
 				content.Text = entry_list.Entries[notes.SelectedRow].Content
 			} else if view == Editor {
-				edit_text(e.ID)
+				edit_text(e.ID, &content.Text)
 			}
 		case "<Resize>":
 			payload := e.Payload.(ui.Resize)
@@ -236,20 +252,39 @@ func main() {
 				add_entry("New Entry", " ")
 				entry_list = get_entries()
 				update_notes_list(entry_list)
+				view = EditTitle
+				content.Text = ""
+				notes.SelectedRow = len(notes.Rows) - 1
+				caret_pos = len(notes.Rows[notes.SelectedRow])
+				orig_text = notes.Rows[notes.SelectedRow]
 			} else if view == Editor {
-				edit_text(e.ID)
+				edit_text(e.ID, &content.Text)
+			} else if view == EditTitle {
+				edit_text(e.ID, &notes.Rows[notes.SelectedRow])
 			}
 		case "d":
 			if view == Browser {
 				delete_entry(entry_list.Entries[notes.SelectedRow])
 				entry_list = get_entries()
 				update_notes_list(entry_list)
+
+				if notes.SelectedRow == len(notes.Rows) {
+					notes.SelectedRow = len(notes.Rows) - 1
+				}
+
+				content.Text = entry_list.Entries[notes.SelectedRow].Content
 			} else if view == Editor {
-				edit_text(e.ID)
+				edit_text(e.ID, &content.Text)
+			} else if view == EditTitle {
+				edit_text(e.ID, &notes.Rows[notes.SelectedRow])
 			}
 		default:
 			if view == Editor {
-				edit_text(e.ID)
+				edit_text(e.ID, &content.Text)
+				entry_list.Entries[notes.SelectedRow].Content = orig_text
+			} else if view == EditTitle {
+				edit_text(e.ID, &notes.Rows[notes.SelectedRow])
+				entry_list.Entries[notes.SelectedRow].Title = orig_text
 			}
 		}
 		ui.Render(grid)
