@@ -139,7 +139,7 @@ func get_entries() EntryList {
 	json.Unmarshal([]byte(entries), &entry_list)
 
 	if len(entry_list.Entries) == 0 {
-		add_entry("New Entry", "")
+		add_entry("New Entry ", "")
 		return get_entries()
 	}
 
@@ -194,7 +194,7 @@ func main() {
 	base_url = string(url)
 	entry_list = get_entries()
 
-	header.Text = "[Zelara's Notebook](fg:yellow,mod:bold)"
+	header.Text = " [Zelara's Notebook](fg:yellow,mod:bold)"
 
 	notes.Title = "[Notes]"
 	notes.WrapText = false
@@ -237,7 +237,7 @@ func main() {
 				entry_list.Entries[notes.SelectedRow].Title = raw_text
 
 				if len(strings.TrimSpace(entry_list.Entries[notes.SelectedRow].Title)) == 0 {
-					entry_list.Entries[notes.SelectedRow].Title = "New Entry"
+					entry_list.Entries[notes.SelectedRow].Title = "New Entry "
 				}
 
 				modify_entry(entry_list.Entries[notes.SelectedRow])
